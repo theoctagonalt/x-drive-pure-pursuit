@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grid Click Tracker</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #ddd;
+      font-family: sans-serif;
+    }
+
+
+    #wrapper {
+      display: flex;
+      gap: 20px;
+    }
+
+
+    #grid-container {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(6, 1fr);
+      width: 600px;
+      height: 600px;
+      position: relative;
+      background-color: #f0f0f0;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    }
+
+
+    .grid-cell {
+      border: 1px solid #bbb;
+    }
+
+
+    #clickable-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 600px;
+      height: 600px;
+      z-index: 10;
+    }
+
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      background-color: black;
+      border-radius: 50%;
+      position: absolute;
+      transform: translate(-50%, -50%);
+    }
+
+
+    #coordinates {
+      min-width: 150px;
+      height: 600px;
+      background: white;
+      padding: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      overflow-y: auto;
+    }
+
+
+    .coord {
+      font-family: monospace;
+      white-space: pre;
+    }
+
+
+    .title {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
+
+    .copy-btn {
+      margin-top: 10px;
+      padding: 8px;
+      font-size: 1rem;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+
+    .copy-btn:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+<body>
+
+
+  <div id="wrapper">
+    <div id="grid-container">
+      <!-- 6x6 grid cells -->
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+      <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+
+
+      <canvas id="line-canvas" width="600" height="600" style="position: absolute; top: 0; left: 0; z-index: 5;"></canvas>
+      <div id="clickable-area"></div>
+    </div>
+
+
+    <div id="coordinates">
+      <div class="title">Coordinates</div>
+      <button id="copy-btn">Copy to Clipboard</button>
+      <div id="coord-list"></div>
+    </div>
+  </div>
+
+
+  <script>
+    const area = document.getElementById('clickable-area');
+    const coordList = document.getElementById('coord-list');
+    const copyBtn = document.getElementById('copy-btn');
+    const canvas = document.getElementById('line-canvas');
+    const ctx = canvas.getContext('2d');
+ 
+    let coordinatesArray = ["std::pair<float, float>(17.500, 17.500})"];
+    let points = [[17.5, 17.5]];
+ 
+    const pixelSize = 600;
+    const tiles = 6;
+    const inchesPerTile = 24;
+    const inchesTotal = tiles * inchesPerTile;
+    const pixelsPerInch = pixelSize / inchesTotal;
+ 
+    function quadraticAt(t, p0, p1, p2) {
+      const x = Math.pow(1 - t, 2) * p0.x +
+                2 * (1 - t) * t * p1.x +
+                Math.pow(t, 2) * p2.x;
+      const y = Math.pow(1 - t, 2) * p0.y +
+                2 * (1 - t) * t * p1.y +
+                Math.pow(t, 2) * p2.y;
+      return { x, y };
+    }
+ 
+    function drawLine(p1, p2) {
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+
+    area.addEventListener('click', function (event) {
+      const rect = area.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const curr = { x, y };
+
+
+      const dot = document.createElement('div');
+      dot.classList.add('dot');
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+      area.appendChild(dot);
+
+
+      if (points.length >= 2) {
+        const A = points[points.length - 2];
+        const B = points[points.length - 1];
+        const C = curr;
+
+
+        const AB = { x: B.x - A.x, y: B.y - A.y };
+        const BC = { x: C.x - B.x, y: C.y - B.y };
+        const cross = AB.x * BC.y - AB.y * BC.x;
+
+
+        const dx = C.x - B.x;
+        const dy = C.y - B.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+
+        let perpX = -dy / length;
+        let perpY = dx / length;
+        const sign = cross > 0 ? -1 : 1;
+        const offset = 40;
+
+
+        const ctrl = {
+          x: (B.x + C.x) / 2 + sign * perpX * offset,
+          y: (B.y + C.y) / 2 + sign * perpY * offset
+        };
+
+
+        // Calculate Q1, Q2, Q3
+        const Q1 = quadraticAt(0.25, B, ctrl, C);
+        const Q2 = quadraticAt(0.50, B, ctrl, C);
+        const Q3 = quadraticAt(0.75, B, ctrl, C);
+
+
+        // Draw lines between the points (linear order)
+        // drawLine(A, B);
+        drawLine(B, Q1);
+        drawLine(Q1, Q2);
+        drawLine(Q2, Q3);
+        drawLine(Q3, C);
+
+
+        // Add Q1, Q2, Q3 as dots
+        [Q1, Q2, Q3].forEach(pt => {
+          const dot = document.createElement('div');
+          dot.classList.add('dot');
+          dot.style.left = `${pt.x}px`;
+          dot.style.top = `${pt.y}px`;
+          area.appendChild(dot);
+
+
+          const inchX = pt.x / pixelsPerInch;
+          const inchY = (pixelSize - pt.y) / pixelsPerInch;
+          const el = document.createElement('div');
+          el.className = 'coord';
+          el.textContent = `(${inchX.toFixed(4).padStart(8)}, ${inchY.toFixed(4).padStart(8)})`;
+          coordList.appendChild(el);
+          coordinatesArray.push(`std::pair<float, float>(${inchX.toFixed(4)}, ${inchY.toFixed(4)})`);
+        });
+      }
+
+
+      // Add clicked point to list and UI
+      points.push(curr);
+      const inchX = x / pixelsPerInch;
+      const inchY = (pixelSize - y) / pixelsPerInch;
+      const coord = document.createElement('div');
+      coord.className = 'coord';
+      coord.textContent = `(${inchX.toFixed(4).padStart(8)}, ${inchY.toFixed(4).padStart(8)})`;
+      coordList.appendChild(coord);
+      coordinatesArray.push(`std::pair<float, float>(${inchX.toFixed(4)}, ${inchY.toFixed(4)})`);
+    });
+
+
+    copyBtn.addEventListener('click', function () {
+      const cppList = `std::vector<std::pair<float, float>> coordinates = {\n  ${coordinatesArray.join(',\n  ')}\n};`;
+      navigator.clipboard.writeText(cppList).then(() => {
+        alert('Coordinates copied to clipboard as C++ list!');
+      });
+    });
+  </script>
+
+
+</body>
+</html>
